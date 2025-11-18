@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Klinik Asy-syifa Husada - Beranda</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="container nav-container">
+    <div class="nav-logo">
+      <img src="assets/img/logo.png" alt="Logo">
+      <span>Klinik Asy-Syifa Husada</span>
+    </div>
+    <ul class="nav-menu">
+      <li><a href="index.html" class="active">Beranda</a></li>
+      <li class="dropdown">
+        <a href="#">Profil ▼</a>
+        <ul class="dropdown-menu">
+          <li><a href="profil/sejarah.html">Sejarah</a></li>
+          <li><a href="profil/visi-misi.html">Visi & Misi</a></li>
+          <li><a href="profil/struktur-organisasi.html">Struktur Organisasi</a></li>
+          <li><a href="profil/dokter.html">Profil Dokter</a></li>
+          <li><a href="profil/sdm-klinik.html">SDM Klinik</a></li>
+          <li><a href="profil/hubungi-kami.html">Hubungi Kami</a></li>
+        </ul>
+      </li>
+      <li><a href="berita.html">Berita</a></li>
+      <li><a href="layanan.html">Layanan</a></li>
+      <li><a href="informasi.html">Informasi</a></li>
+      <li><a href="pengaduan.html">Pengaduan</a></li>
+    </ul>
+    <div class="hamburger">☰</div>
+  </div>
+</nav>
+
+<header class="hero" style="background: linear-gradient(rgba(0,0,0,0.6),rgba(0,0,0,0.6)), url('assets/img/hero.jpg') center/cover; height:100vh; display:flex; align-items:center; justify-content:center; color:white; text-align:center;">
+  <div>
+    <h1 style="font-size:3.5rem;">Selamat Datang di Klinik Asy-Syifa Husada</h1>
+    <p style="font-size:1.5rem;">Pelayanan Kesehatan Terbaik untuk Keluarga Anda</p>
+    <a href="profil/hubungi-kami.html" style="background:#ffd700; color:#333; padding:15px 40px; border-radius:50px; font-weight:bold; font-size:1.2rem; text-decoration:none;">Buat Janji</a>
+  </div>
+</header>
+
+<section style="padding:80px 20px; background:#f8f9fa; text-align:center;">
+  <h2 style="margin-bottom:50px; color:#0066cc;">Layanan Unggulan</h2>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:30px; max-width:1200px; margin:auto;">
+    <div style="background:white; padding:40px; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,0.1);"><i class="fas fa-ambulance fa-3x" style="color:#0066cc;"></i><h3>IGD 24 Jam</h3></div>
+    <div style="background:white; padding:40px; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,0.1);"><i class="fas fa-user-md fa-3x" style="color:#0066cc;"></i><h3>Dokter Spesialis</h3></div>
+    <div style="background:white; padding:40px; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,0.1);"><i class="fas fa-hospital fa-3x" style="color:#0066cc;"></i><h3>Rawat Inap VIP</h3></div>
+  </div>
+</section>
+
+<footer style="background:#222; color:white; padding:60px 20px 20px; text-align:center;">
+  <p>© 2025 RSU Harapan Sehat. Jl. Sehat Selalu No. 123 Jakarta | Telp: (021) 555-0123</p>
+</footer>
+
+<script>
+  document.querySelector('.hamburger').addEventListener('click', () => {
+    document.querySelector('.nav-menu').classList.toggle('active');
+  });
+</script>
+<style>
+  /* CSS sementara biar langsung jalan tanpa folder assets dulu */
+  .navbar {background:#0066cc; position:fixed; width:100%; top:0; z-index:1000; padding:15px 0;}
+  .nav-container {max-width:1200px; margin:auto; display:flex; justify-content:space-between; align-items:center; padding:0 20px; color:white;}
+  .nav-menu {display:flex; gap:30px; list-style:none;}
+  .nav-menu a {color:white; text-decoration:none;}
+  .dropdown ul {display:none; position:absolute; background:#0066cc; min-width:200px;}
+  .dropdown:hover ul {display:block;}
+  @media (max-width:768px){
+    .nav-menu {display:none; flex-direction:column; position:absolute; top:100%; left:0; width:100%; background:#0066cc;}
+    .nav-menu.active {display:flex;}
+    .hamburger {font-size:30px; cursor:pointer;}
+  }
+</style>
+</body>
+  </html>
