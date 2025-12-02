@@ -1,822 +1,702 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  BookOpen, 
-  ShieldCheck, 
-  LayoutDashboard, 
-  FileText, 
-  History, 
-  LogOut, 
-  Menu, 
-  X, 
-  Search, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Download, 
-  ChevronRight, 
-  Eye, 
-  Save, 
-  ArrowLeft,
-  User,
-  UploadCloud,
-  File
-} from 'lucide-react';
-
-/**
- * MOCK DATA & TYPES
- */
-
-type Role = 'admin' | 'staff';
-
-interface UserData {
-  id: number;
-  username: string;
-  name: string;
-  role: Role;
-}
-
-interface Revision {
-  version: number;
-  date: string;
-  changedBy: string;
-  note: string;
-}
-
-interface SOP {
-  id: number;
-  title: string;
-  category: string;
-  fileUrl: string; // Base64 Data URL atau Blob URL
-  fileName: string;
-  lastUpdated: string;
-  version: number;
-  revisions: Revision[];
-}
-
-// PDF KOSONG (Base64) untuk data awal
-const SAMPLE_PDF = "data:application/pdf;base64,JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwogIC9QYWdlcyAyIDAgUgo+PgplbmRvYmoKCjIgMCBvYmoKPDwKICAvVHlwZSAvUGFnZXwKICAvTWVkaWFCb3ggWyAwIDAgNTk1LjI4IDg0MS44OSBdCiAgL0NvdW50IDEKICAvS2lkcyBbIDMgMCBSIF0KPj4KZW5kb2JqCgozIDAgb2JqCjw8CiAgL1R5cGUgL1BhZ2UKICAvUGFyZW50IDIgMCBSCiAgL1Jlc291cmNlcyA8PAogICAgL0ZvbnQgPDwKICAgICAgL0YxIDQgMCBSCiffICAgID4+CiAgPj4KICAvQ29udGVudHMgNSAwIFIKPj4KZW5kb2JqCgo0IDAgb2JqCjw8CiAgL1R5cGUgL0ZvbnQKICAvU3VidHlwZSAvVHlwZTEKICAvQmFzZUZvbnQgL1RpbWVzLVJvbWFuCj4+CmVuZG9JWoKCjUgMCBvYmoKPDwKICAvTGVuZ3RoIDIyMwo+PgpzdHJlYW0KQlQKdTcgcG9pbnQgVGltZXMtUm9tYW4gU2V0Zm9udApETQoxMDAgMTAwIFRkCihDb250b2ggU1BPIEtsaW5payBBc3kgU3lpZmEgSHVzYWRhIC0gU2ltdWxhc2kgUERGKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCgp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTAgMDAwMDAgbiAKMDAwMDAwMDA2MCAwMDAwMCBuIAowMDAwMDAwMTU3IDAwMDAwIG4gCjAwMDAwMDAyNjAgMDAwMDAgbiAKMDAwMDAwMDM0OCAwMDAwMCBuIAp0cmFpbGVyCjw8CiAgL1NpemUgNgogIC9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgo2MjMKJSVFT0YK";
-
-// Data awal (Seed Data)
-const INITIAL_SOPS: SOP[] = [
-  {
-    id: 1,
-    title: "SOP Pendaftaran Pasien Baru",
-    category: "Administrasi",
-    fileUrl: SAMPLE_PDF,
-    fileName: "SOP_Pendaftaran_v1.pdf",
-    lastUpdated: "2023-10-25",
-    version: 1,
-    revisions: [
-      { version: 1, date: "2023-10-25", changedBy: "Admin", note: "Initial Creation" }
-    ]
-  },
-  {
-    id: 2,
-    title: "SOP Penanganan Limbah Medis",
-    category: "K3 & Sanitasi",
-    fileUrl: SAMPLE_PDF,
-    fileName: "SOP_Limbah_B3_v2.pdf",
-    lastUpdated: "2023-11-01",
-    version: 2,
-    revisions: [
-      { version: 1, date: "2023-01-10", changedBy: "Admin", note: "Draft Awal" },
-      { version: 2, date: "2023-11-01", changedBy: "Admin", note: "Update regulasi Kemenkes" }
-    ]
-  }
-];
-
-// Simulasi Session
-const CURRENT_USER_KEY = 'klinik_sop_user';
-const DATA_KEY = 'klinik_sop_data_v2'; 
-
-// Helper: Convert Base64 Data URI to Blob
-function dataURItoBlob(dataURI: string) {
-  try {
-      // Split metadata and data
-      const splitData = dataURI.split(',');
-      if (splitData.length < 2) return null;
-      
-      const byteString = atob(splitData[1]);
-      const mimeString = splitData[0].split(':')[1].split(';')[0];
-      const ab = new ArrayBuffer(byteString.length);
-      const ia = new Uint8Array(ab);
-      
-      for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i);
-      }
-      return new Blob([ab], {type: mimeString});
-  } catch (e) {
-      console.error("Gagal convert blob", e);
-      return null;
-  }
-}
-
-export default function App() {
-  // State Global
-  const [user, setUser] = useState<UserData | null>(null);
-  const [sops, setSops] = useState<SOP[]>([]);
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'list' | 'detail' | 'manage' | 'edit'>('login');
-  const [selectedSopId, setSelectedSopId] = useState<number | null>(null);
-  
-  // UI State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [loading, setLoading] = useState(false);
-
-  // Initialize Data
-  useEffect(() => {
-    const storedData = localStorage.getItem(DATA_KEY);
-    if (storedData) {
-      setSops(JSON.parse(storedData));
-    } else {
-      setSops(INITIAL_SOPS);
-      localStorage.setItem(DATA_KEY, JSON.stringify(INITIAL_SOPS));
-    }
-
-    const sessionUser = localStorage.getItem(CURRENT_USER_KEY);
-    if (sessionUser) {
-      setUser(JSON.parse(sessionUser));
-      setCurrentView('dashboard');
-    }
-  }, []);
-
-  // Helper: Save to local storage
-  const saveSops = (newSops: SOP[]) => {
-    setSops(newSops);
-    try {
-        localStorage.setItem(DATA_KEY, JSON.stringify(newSops));
-    } catch (e) {
-        alert("Peringatan: Ukuran file PDF terlalu besar untuk LocalStorage browser ini. Data mungkin tidak tersimpan permanen setelah refresh (Mode Demo).");
-    }
-  };
-
-  // --- ACTIONS ---
-
-  const handleLogin = (e: React.FormEvent, u: string, p: string) => {
-    e.preventDefault();
-    setLoading(true);
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-SOP Klinik Asy Syifa Husada</title>
     
-    setTimeout(() => {
-      if (u === 'admin' && p === 'admin') {
-        const uData: UserData = { id: 1, username: 'admin', name: 'Administrator', role: 'admin' };
-        setUser(uData);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(uData));
-        setCurrentView('dashboard');
-      } else if (u === 'staff' && p === 'staff') {
-        const uData: UserData = { id: 2, username: 'staff', name: 'Staff Medis', role: 'staff' };
-        setUser(uData);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(uData));
-        setCurrentView('dashboard');
-      } else {
-        alert("Login Gagal! Gunakan (admin/admin) atau (staff/staff)");
-      }
-      setLoading(false);
-    }, 800);
-  };
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem(CURRENT_USER_KEY);
-    setCurrentView('login');
-  };
+    <style>
+        /* Custom Scrollbar for nicer look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #0f766e; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #0d9488; 
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 overflow-hidden h-screen">
 
-  // --- VIEWS ---
-
-  if (!user || currentView === 'login') {
-    return <LoginView onLogin={handleLogin} loading={loading} />;
-  }
-
-  return (
-    <div className="flex h-screen bg-gray-50 font-sans text-gray-800 overflow-hidden">
-      {/* Sidebar - Desktop */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-teal-800 text-white transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 shadow-xl`}>
-        <div className="h-full flex flex-col">
-          <div className="p-6 border-b border-teal-700 flex items-center justify-between">
-            <div>
-                <h1 className="text-xl font-bold">E-SOP</h1>
-                <p className="text-xs text-teal-300">Klinik Asy Syifa Husada</p>
-            </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-teal-200 hover:text-white">
-                <X size={20} />
-            </button>
-          </div>
-
-          <nav className="flex-1 px-4 py-6 space-y-2">
-            <NavItem 
-              active={currentView === 'dashboard'} 
-              onClick={() => setCurrentView('dashboard')} 
-              icon={<LayoutDashboard size={20} />} 
-              label="Dashboard" 
-            />
-            <NavItem 
-              active={currentView === 'list' || currentView === 'detail'} 
-              onClick={() => setCurrentView('list')} 
-              icon={<BookOpen size={20} />} 
-              label="Daftar SOP" 
-            />
-            {user.role === 'admin' && (
-              <NavItem 
-                active={currentView === 'manage' || currentView === 'edit'} 
-                onClick={() => { setSelectedSopId(null); setCurrentView('manage'); }} 
-                icon={<ShieldCheck size={20} />} 
-                label="Upload SOP" 
-              />
-            )}
-          </nav>
-
-          <div className="p-4 border-t border-teal-700 bg-teal-900">
-            <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center">
-                    <User size={16} />
-                </div>
-                <div>
-                    <p className="text-sm font-medium">{user.name}</p>
-                    <p className="text-xs text-teal-400 capitalize">{user.role}</p>
-                </div>
-            </div>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 text-white py-2 rounded-md transition text-sm"
-            >
-              <LogOut size={16} />
-              <span>Keluar</span>
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Header Mobile */}
-        <header className="bg-white shadow-sm lg:hidden p-4 flex items-center justify-between">
-            <button onClick={() => setIsSidebarOpen(true)} className="text-gray-600">
-                <Menu size={24} />
-            </button>
-            <span className="font-bold text-teal-800">Klinik Asy Syifa Husada</span>
-            <div className="w-6"></div> 
-        </header>
-
-        {/* Content Area */}
-        <main className="flex-1 overflow-auto p-4 lg:p-8">
-            {currentView === 'dashboard' && <DashboardView sops={sops} user={user} />}
-            
-            {currentView === 'list' && (
-                <SOPListView 
-                    sops={sops} 
-                    onView={(id) => { setSelectedSopId(id); setCurrentView('detail'); }} 
-                />
-            )}
-            
-            {currentView === 'detail' && selectedSopId && (
-                <SOPDetailView 
-                    sop={sops.find(s => s.id === selectedSopId)!} 
-                    onBack={() => setCurrentView('list')}
-                    userRole={user.role}
-                    onEdit={(id) => { setSelectedSopId(id); setCurrentView('edit'); }}
-                />
-            )}
-
-            {(currentView === 'manage' || currentView === 'edit') && user.role === 'admin' && (
-                <SOPFormView 
-                    initialData={selectedSopId ? sops.find(s => s.id === selectedSopId) : undefined}
-                    onSave={(sopData) => {
-                        if (selectedSopId) {
-                            // Update
-                            const updatedSops = sops.map(s => s.id === selectedSopId ? sopData : s);
-                            saveSops(updatedSops);
-                        } else {
-                            // Create
-                            const newId = Math.max(...sops.map(s => s.id), 0) + 1;
-                            saveSops([...sops, { ...sopData, id: newId }]);
-                        }
-                        setCurrentView('list');
-                    }}
-                    onCancel={() => setCurrentView('list')}
-                    currentUser={user.name}
-                />
-            )}
-        </main>
-      </div>
+    <div id="app" class="h-full w-full">
+        <!-- App content will be injected here via JavaScript -->
     </div>
-  );
-}
 
-// --- SUB COMPONENTS ---
+    <script>
+        // --- DATA & CONFIG ---
+        
+        const SAMPLE_PDF = "data:application/pdf;base64,JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwogIC9QYWdlcyAyIDAgUgo+PgplbmRvYmoKCjIgMCBvYmoKPDwKICAvVHlwZSAvUGFnZXwKICAvTWVkaWFCb3ggWyAwIDAgNTk1LjI4IDg0MS44OSBdCiAgL0NvdW50IDEKICAvS2lkcyBbIDMgMCBSIF0KPj4KZW5kb2JqCgozIDAgb2JqCjw8CiAgL1R5cGUgL1BhZ2UKICAvUGFyZW50IDIgMCBSCiAgL1Jlc291cmNlcyA8PAogICAgL0ZvbnQgPDwKICAgICAgL0YxIDQgMCBSCiffICAgID4+CiAgPj4KICAvQ29udGVudHMgNSAwIFIKPj4KZW5kb2JqCgo0IDAgb2JqCjw8CiAgL1R5cGUgL0ZvbnQKICAvU3VidHlwZSAvVHlwZTEKICAvQmFzZUZvbnQgL1RpbWVzLVJvbWFuCj4+CmVuZG9JWoKCjUgMCBvYmoKPDwKICAvTGVuZ3RoIDIyMwo+PgpzdHJlYW0KQlQKdTcgcG9pbnQgVGltZXMtUm9tYW4gU2V0Zm9udApETQoxMDAgMTAwIFRkCihDb250b2ggU1BPIEtsaW5payBBc3kgU3lpZmEgSHVzYWRhIC0gU2ltdWxhc2kgUERGKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCgp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTAgMDAwMDAgbiAKMDAwMDAwMDA2MCAwMDAwMCBuIAowMDAwMDAwMTU3IDAwMDAwIG4gCjAwMDAwMDAyNjAgMDAwMDAgbiAKMDAwMDAwMDM0OCAwMDAwMCBuIAp0cmFpbGVyCjw8CiAgL1NpemUgNgogIC9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgo2MjMKJSVFT0YK";
 
-const NavItem = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <button 
-    onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${active ? 'bg-teal-700 text-white shadow-md' : 'text-teal-100 hover:bg-teal-700/50'}`}
-  >
-    {icon}
-    <span className="font-medium">{label}</span>
-    {active && <ChevronRight size={16} className="ml-auto" />}
-  </button>
-);
+        const INITIAL_SOPS = [
+            {
+                id: 1,
+                title: "SOP Pendaftaran Pasien Baru",
+                category: "Administrasi",
+                fileUrl: SAMPLE_PDF,
+                fileName: "SOP_Pendaftaran_v1.pdf",
+                lastUpdated: "2023-10-25",
+                version: 1,
+                revisions: [
+                    { version: 1, date: "2023-10-25", changedBy: "Admin", note: "Initial Creation" }
+                ]
+            },
+            {
+                id: 2,
+                title: "SOP Penanganan Limbah Medis",
+                category: "K3 & Sanitasi",
+                fileUrl: SAMPLE_PDF,
+                fileName: "SOP_Limbah_B3_v2.pdf",
+                lastUpdated: "2023-11-01",
+                version: 2,
+                revisions: [
+                    { version: 1, date: "2023-01-10", changedBy: "Admin", note: "Draft Awal" },
+                    { version: 2, date: "2023-11-01", changedBy: "Admin", note: "Update regulasi Kemenkes" }
+                ]
+            }
+        ];
 
-const LoginView = ({ onLogin, loading }: { onLogin: (e: React.FormEvent, u: string, p: string) => void, loading: boolean }) => {
-    const [u, setU] = useState('');
-    const [p, setP] = useState('');
+        const DATA_KEY = 'klinik_sop_data_html_v1';
+        const USER_KEY = 'klinik_sop_user_html_v1';
 
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-teal-500 to-teal-800 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-                <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <ShieldCheck size={32} />
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-800">E-SOP Login</h2>
-                    <p className="text-gray-500">Klinik Asy Syifa Husada</p>
-                </div>
+        // --- STATE MANAGEMENT ---
+
+        let state = {
+            user: null,
+            sops: [],
+            view: 'login', // login, dashboard, list, detail, manage
+            selectedSopId: null,
+            isSidebarOpen: true,
+            searchTerm: '',
+            catFilter: 'All',
+            loading: false,
+            // Form state placeholder
+            formData: {
+                title: '',
+                category: 'Umum',
+                note: '',
+                fileUrl: '',
+                fileName: ''
+            }
+        };
+
+        // --- HELPER FUNCTIONS ---
+
+        function init() {
+            // Load Data
+            const storedSops = localStorage.getItem(DATA_KEY);
+            if (storedSops) {
+                try {
+                    state.sops = JSON.parse(storedSops);
+                } catch(e) {
+                    state.sops = INITIAL_SOPS;
+                }
+            } else {
+                state.sops = INITIAL_SOPS;
+                saveSops();
+            }
+
+            // Load Session
+            const storedUser = localStorage.getItem(USER_KEY);
+            if (storedUser) {
+                state.user = JSON.parse(storedUser);
+                state.view = 'dashboard';
+            }
+
+            render();
+        }
+
+        function saveSops() {
+            try {
+                localStorage.setItem(DATA_KEY, JSON.stringify(state.sops));
+            } catch (e) {
+                alert("Peringatan: Penyimpanan penuh. Data mungkin tidak tersimpan permanen.");
+            }
+        }
+
+        function dataURItoBlob(dataURI) {
+            try {
+                const splitData = dataURI.split(',');
+                if (splitData.length < 2) return null;
+                const byteString = atob(splitData[1]);
+                const mimeString = splitData[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                return new Blob([ab], {type: mimeString});
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
+        }
+
+        // --- ACTIONS ---
+
+        window.appActions = {
+            login: (e) => {
+                e.preventDefault();
+                const u = document.getElementById('username').value;
+                const p = document.getElementById('password').value;
+                const btn = document.getElementById('loginBtn');
                 
-                <form onSubmit={(e) => onLogin(e, u, p)} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                        <input 
-                            type="text" 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition"
-                            placeholder="admin / staff"
-                            value={u}
-                            onChange={(e) => setU(e.target.value)}
-                        />
+                btn.innerText = "Memuat...";
+                btn.disabled = true;
+
+                setTimeout(() => {
+                    if (u === 'admin' && p === 'admin') {
+                        state.user = { id: 1, username: 'admin', name: 'Administrator', role: 'admin' };
+                        localStorage.setItem(USER_KEY, JSON.stringify(state.user));
+                        state.view = 'dashboard';
+                    } else if (u === 'staff' && p === 'staff') {
+                        state.user = { id: 2, username: 'staff', name: 'Staff Medis', role: 'staff' };
+                        localStorage.setItem(USER_KEY, JSON.stringify(state.user));
+                        state.view = 'dashboard';
+                    } else {
+                        alert("Login Gagal! (admin/admin) atau (staff/staff)");
+                        btn.innerText = "Masuk Sistem";
+                        btn.disabled = false;
+                        return;
+                    }
+                    render();
+                }, 800);
+            },
+            logout: () => {
+                state.user = null;
+                localStorage.removeItem(USER_KEY);
+                state.view = 'login';
+                render();
+            },
+            nav: (view) => {
+                state.view = view;
+                state.selectedSopId = null;
+                // Reset form data on nav change
+                state.formData = { title: '', category: 'Umum', note: '', fileUrl: '', fileName: '' };
+                render();
+            },
+            toggleSidebar: () => {
+                state.isSidebarOpen = !state.isSidebarOpen;
+                render();
+            },
+            viewDetail: (id) => {
+                state.selectedSopId = id;
+                state.view = 'detail';
+                render();
+            },
+            editSop: (id) => {
+                const sop = state.sops.find(s => s.id === id);
+                state.selectedSopId = id;
+                state.formData = {
+                    title: sop.title,
+                    category: sop.category,
+                    note: '',
+                    fileUrl: sop.fileUrl,
+                    fileName: sop.fileName
+                };
+                state.view = 'manage';
+                render();
+            },
+            download: (id) => {
+                const sop = state.sops.find(s => s.id === id);
+                if(!sop) return;
+                
+                // Blob logic for better download support
+                let url = sop.fileUrl;
+                if(url.startsWith('data:')) {
+                    const blob = dataURItoBlob(url);
+                    if(blob) url = URL.createObjectURL(blob);
+                }
+
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = sop.fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            },
+            handleFileSelect: (input) => {
+                const file = input.files[0];
+                if (file) {
+                    if (file.type !== 'application/pdf') {
+                        alert("Hanya file PDF yang diperbolehkan");
+                        input.value = "";
+                        return;
+                    }
+                    if (file.size > 3 * 1024 * 1024) {
+                        alert("File terlalu besar (Maks 3MB untuk demo)");
+                        return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        state.formData.fileUrl = reader.result;
+                        state.formData.fileName = file.name;
+                        document.getElementById('fileNameDisplay').innerText = file.name;
+                        document.getElementById('fileNameContainer').classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                }
+            },
+            submitForm: (e) => {
+                e.preventDefault();
+                const form = e.target;
+                
+                // Get values direct from DOM to be safe
+                const title = document.getElementById('inputTitle').value;
+                const category = document.getElementById('inputCategory').value;
+                const note = document.getElementById('inputNote') ? document.getElementById('inputNote').value : '';
+
+                if (!state.formData.fileUrl) {
+                    alert("Mohon upload file SOP!");
+                    return;
+                }
+
+                const now = new Date().toISOString().split('T')[0];
+                
+                if (state.selectedSopId) {
+                    // Update Logic
+                    const existingIndex = state.sops.findIndex(s => s.id === state.selectedSopId);
+                    const oldSop = state.sops[existingIndex];
+                    
+                    const newVersion = oldSop.version + 1;
+                    const newRevision = {
+                        version: newVersion,
+                        date: now,
+                        changedBy: state.user.name,
+                        note: note || "Update File SOP"
+                    };
+
+                    state.sops[existingIndex] = {
+                        ...oldSop,
+                        title,
+                        category,
+                        fileUrl: state.formData.fileUrl,
+                        fileName: state.formData.fileName,
+                        lastUpdated: now,
+                        version: newVersion,
+                        revisions: [...oldSop.revisions, newRevision]
+                    };
+                } else {
+                    // Create Logic
+                    const newId = state.sops.length > 0 ? Math.max(...state.sops.map(s => s.id)) + 1 : 1;
+                    const newSop = {
+                        id: newId,
+                        title,
+                        category,
+                        fileUrl: state.formData.fileUrl,
+                        fileName: state.formData.fileName,
+                        lastUpdated: now,
+                        version: 1,
+                        revisions: [{
+                            version: 1,
+                            date: now,
+                            changedBy: state.user.name,
+                            note: "Upload Dokumen Awal"
+                        }]
+                    };
+                    state.sops.push(newSop);
+                }
+
+                saveSops();
+                state.view = 'list';
+                render();
+            },
+            setFilter: (type, val) => {
+                if(type === 'search') state.searchTerm = val;
+                if(type === 'cat') state.catFilter = val;
+                render();
+            }
+        };
+
+        // --- RENDERERS ---
+
+        function render() {
+            const app = document.getElementById('app');
+            app.innerHTML = ''; // Clear
+
+            if (!state.user || state.view === 'login') {
+                app.innerHTML = renderLogin();
+            } else {
+                app.innerHTML = `
+                    <div class="flex h-screen bg-gray-50 font-sans text-gray-800 overflow-hidden">
+                        ${renderSidebar()}
+                        <div class="flex-1 flex flex-col h-full overflow-hidden">
+                            ${renderMobileHeader()}
+                            <main class="flex-1 overflow-auto p-4 lg:p-8 relative">
+                                ${renderMainContent()}
+                            </main>
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                        <input 
-                            type="password" 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition"
-                            placeholder="admin / staff"
-                            value={p}
-                            onChange={(e) => setP(e.target.value)}
-                        />
+                `;
+            }
+
+            // Re-initialize icons
+            lucide.createIcons();
+            
+            // Re-attach search listener if in list view (vanilla JS quirk fix)
+            if(state.view === 'list') {
+                const searchInput = document.getElementById('searchInput');
+                const catSelect = document.getElementById('catSelect');
+                if(searchInput) {
+                    searchInput.value = state.searchTerm;
+                    searchInput.focus();
+                    // Cursor jumps to end fix
+                    const len = searchInput.value.length;
+                    searchInput.setSelectionRange(len, len);
+                }
+                if(catSelect) catSelect.value = state.catFilter;
+            }
+        }
+
+        function renderLogin() {
+            return `
+            <div class="min-h-screen bg-gradient-to-br from-teal-500 to-teal-800 flex items-center justify-center p-4">
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 fade-in">
+                    <div class="text-center mb-8">
+                        <div class="w-16 h-16 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="shield-check" class="w-8 h-8"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-gray-800">E-SOP Login</h2>
+                        <p class="text-gray-500">Klinik Asy Syifa Husada</p>
                     </div>
                     
-                    <button 
-                        type="submit" 
-                        disabled={loading}
-                        className={`w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-lg transform transition hover:-translate-y-0.5 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                    >
-                        {loading ? 'Memuat...' : 'Masuk Sistem'}
-                    </button>
-                </form>
-
-                <div className="mt-6 text-center text-xs text-gray-400 bg-gray-50 p-3 rounded-lg">
-                    <p>Demo Credentials:</p>
-                    <p>Admin: admin / admin</p>
-                    <p>Staff: staff / staff</p>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const DashboardView = ({ sops, user }: { sops: SOP[], user: UserData }) => {
-    // Stats
-    const totalSOP = sops.length;
-    const categories = Array.from(new Set(sops.map(s => s.category))).length;
-    const recentUpdate = sops.sort((a,b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())[0];
-
-    return (
-        <div className="space-y-6 animate-fadeIn">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
-                    <p className="text-gray-500">Selamat datang kembali, {user.name}</p>
-                </div>
-                <div className="text-sm text-gray-400">{new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-            </div>
-
-            {/* Stat Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                        <BookOpen size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500">Total SOP</p>
-                        <p className="text-2xl font-bold text-gray-800">{totalSOP} Dokumen</p>
-                    </div>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
-                    <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
-                        <LayoutDashboard size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500">Kategori</p>
-                        <p className="text-2xl font-bold text-gray-800">{categories} Bidang</p>
-                    </div>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
-                    <div className="p-3 bg-green-50 text-green-600 rounded-lg">
-                        <History size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500">Update Terakhir</p>
-                        <p className="text-lg font-bold text-gray-800 truncate max-w-[150px]">{recentUpdate?.lastUpdated || '-'}</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Recent Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100">
-                    <h3 className="font-bold text-gray-800">Perubahan Terkini</h3>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 text-gray-500">
-                            <tr>
-                                <th className="p-4">Judul SOP</th>
-                                <th className="p-4">Versi</th>
-                                <th className="p-4">Tanggal</th>
-                                <th className="p-4">Kategori</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {sops.slice(0, 5).map(sop => (
-                                <tr key={sop.id} className="hover:bg-gray-50">
-                                    <td className="p-4 font-medium text-gray-800">{sop.title}</td>
-                                    <td className="p-4"><span className="bg-teal-100 text-teal-800 px-2 py-1 rounded text-xs font-bold">v{sop.version}.0</span></td>
-                                    <td className="p-4 text-gray-500">{sop.lastUpdated}</td>
-                                    <td className="p-4 text-gray-500">{sop.category}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const SOPListView = ({ sops, onView }: { sops: SOP[], onView: (id: number) => void }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [catFilter, setCatFilter] = useState('All');
-
-    const categories = ['All', ...Array.from(new Set(sops.map(s => s.category)))];
-
-    const filtered = sops.filter(s => {
-        const matchSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.fileName.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchCat = catFilter === 'All' || s.category === catFilter;
-        return matchSearch && matchCat;
-    });
-
-    return (
-        <div className="space-y-6 animate-fadeIn">
-            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                <h2 className="text-2xl font-bold text-gray-800">Daftar SOP</h2>
-                <div className="flex gap-2">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                        <input 
-                            type="text" 
-                            placeholder="Cari SOP..." 
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none w-full md:w-64"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                    <select 
-                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white"
-                        value={catFilter}
-                        onChange={(e) => setCatFilter(e.target.value)}
-                    >
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filtered.map(sop => (
-                    <div key={sop.id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-5 flex flex-col h-full group">
-                        <div className="flex justify-between items-start mb-3">
-                            <span className="bg-teal-50 text-teal-700 px-2 py-1 rounded text-xs font-semibold">{sop.category}</span>
-                            <span className="text-gray-400 text-xs">{sop.lastUpdated}</span>
-                        </div>
-                        <h3 className="font-bold text-lg text-gray-800 mb-2 group-hover:text-teal-600 transition-colors">{sop.title}</h3>
-                        
-                        <div className="flex items-center space-x-2 text-gray-500 text-sm mb-4 bg-gray-50 p-2 rounded">
-                            <FileText size={16} />
-                            <span className="truncate">{sop.fileName}</span>
-                        </div>
-                        
-                        <div className="pt-4 border-t border-gray-50 flex justify-between items-center mt-auto">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">Ver {sop.version}.0</span>
-                            <button 
-                                onClick={() => onView(sop.id)}
-                                className="flex items-center space-x-1 text-teal-600 hover:text-teal-800 font-medium text-sm"
-                            >
-                                <Eye size={16} />
-                                <span>Preview PDF</span>
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-            {filtered.length === 0 && (
-                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
-                    <p className="text-gray-500">Tidak ada SOP ditemukan.</p>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const SOPDetailView = ({ sop, onBack, userRole, onEdit }: { sop: SOP, onBack: () => void, userRole: Role, onEdit: (id: number) => void }) => {
-    // State untuk menyimpan URL blob yang aman untuk browser
-    const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-
-    // Konversi base64 ke Blob URL saat komponen dimuat
-    useEffect(() => {
-        let objectUrl: string | null = null;
-        if (sop.fileUrl && sop.fileUrl.startsWith('data:')) {
-            const blob = dataURItoBlob(sop.fileUrl);
-            if (blob) {
-                objectUrl = URL.createObjectURL(blob);
-                setPdfBlobUrl(objectUrl);
-            }
-        } else {
-            setPdfBlobUrl(sop.fileUrl);
-        }
-
-        // Cleanup function untuk menghapus Blob URL dari memori saat komponen di-unmount
-        return () => {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
-        };
-    }, [sop.fileUrl]);
-
-    const handleDownload = () => {
-        const link = document.createElement("a");
-        // Gunakan blob URL jika ada, jika tidak gunakan original fileUrl
-        link.href = pdfBlobUrl || sop.fileUrl;
-        link.download = sop.fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    return (
-        <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
-            <button onClick={onBack} className="flex items-center text-gray-500 hover:text-teal-600 mb-4 transition">
-                <ArrowLeft size={18} className="mr-1" /> Kembali ke Daftar
-            </button>
-
-            <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-                <div className="bg-teal-600 p-6 text-white">
-                    <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                    <form onsubmit="appActions.login(event)" class="space-y-6">
                         <div>
-                            <span className="bg-teal-500 text-white border border-teal-400 px-3 py-1 rounded-full text-xs font-semibold mb-2 inline-block">
-                                {sop.category}
-                            </span>
-                            <h1 className="text-2xl md:text-3xl font-bold mb-2">{sop.title}</h1>
-                            <p className="text-teal-100 text-sm flex items-center gap-2">
-                                <File size={14} /> 
-                                {sop.fileName}
-                            </p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                            <input type="text" id="username" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" placeholder="admin / staff">
                         </div>
-                        <div className="bg-white/10 backdrop-blur-sm p-3 rounded-lg text-center min-w-[100px]">
-                            <p className="text-xs uppercase tracking-wider text-teal-200">Versi</p>
-                            <p className="text-3xl font-bold">{sop.version}.0</p>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" placeholder="admin / staff">
                         </div>
+                        <button type="submit" id="loginBtn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-lg transition">Masuk Sistem</button>
+                    </form>
+                    <div class="mt-6 text-center text-xs text-gray-400 bg-gray-50 p-3 rounded-lg">
+                        <p>Demo: admin/admin atau staff/staff</p>
                     </div>
                 </div>
-
-                <div className="p-4 md:p-8">
-                    <div className="flex flex-wrap gap-2 justify-between items-center mb-6 border-b pb-4">
-                        <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                            <Eye className="mr-2 text-teal-600" size={20} />
-                            Preview Dokumen
-                        </h2>
-                        <div className="flex space-x-2">
-                            <button 
-                                onClick={handleDownload}
-                                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium transition"
-                            >
-                                <Download size={16} />
-                                <span>Unduh PDF</span>
-                            </button>
-                            {userRole === 'admin' && (
-                                <button 
-                                    onClick={() => onEdit(sop.id)}
-                                    className="flex items-center space-x-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium transition"
-                                >
-                                    <Edit size={16} />
-                                    <span>Revisi File</span>
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* PDF PREVIEWER - Menggunakan embed + Blob URL agar lebih kompatibel */}
-                    <div className="bg-gray-100 rounded-lg border border-gray-300 overflow-hidden shadow-inner min-h-[500px] md:min-h-[700px] relative">
-                        {pdfBlobUrl ? (
-                            <embed 
-                                src={pdfBlobUrl} 
-                                type="application/pdf"
-                                className="w-full h-[500px] md:h-[700px]" 
-                                title="PDF Preview"
-                            />
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-[500px] text-gray-400">
-                                <p>Memuat Preview...</p>
-                            </div>
-                        )}
-                        
-                        {/* Fallback jika embed gagal (biasanya tidak muncul jika embed sukses) */}
-                        <div className="absolute bottom-0 w-full bg-white/80 p-2 text-center text-xs text-gray-500 backdrop-blur-sm">
-                           Jika preview tidak muncul, <button onClick={handleDownload} className="text-teal-600 font-bold underline">Klik disini untuk Mengunduh</button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Revision History */}
-                <div className="bg-gray-50 p-6 md:p-8 border-t border-gray-200">
-                    <h3 className="font-bold text-gray-800 mb-4 flex items-center">
-                        <History className="mr-2 text-gray-500" size={20} />
-                        Riwayat Perubahan (Audit Trail)
-                    </h3>
-                    <div className="space-y-4">
-                        {sop.revisions.sort((a,b) => b.version - a.version).map((rev) => (
-                            <div key={rev.version} className="flex gap-4 items-start">
-                                <div className="mt-1 flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-xs">
-                                    v{rev.version}
-                                </div>
-                                <div className="flex-1 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                                    <div className="flex justify-between mb-1">
-                                        <span className="font-semibold text-gray-800">Oleh: {rev.changedBy}</span>
-                                        <span className="text-xs text-gray-500">{rev.date}</span>
-                                    </div>
-                                    <p className="text-sm text-gray-600">Catatan: {rev.note}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const SOPFormView = ({ initialData, onSave, onCancel, currentUser }: { initialData?: SOP, onSave: (data: SOP) => void, onCancel: () => void, currentUser: string }) => {
-    const [title, setTitle] = useState(initialData?.title || '');
-    const [category, setCategory] = useState(initialData?.category || 'Umum');
-    const [note, setNote] = useState(''); // Revision note
-    
-    // File handling
-    const [fileUrl, setFileUrl] = useState(initialData?.fileUrl || '');
-    const [fileName, setFileName] = useState(initialData?.fileName || '');
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (file.type !== 'application/pdf') {
-                alert('Harap upload file dengan format PDF.');
-                if (fileInputRef.current) fileInputRef.current.value = '';
-                return;
-            }
-
-            // Batas ukuran sederhana untuk demo (3MB)
-            if (file.size > 3 * 1024 * 1024) {
-                alert('File terlalu besar untuk Demo ini (Max 3MB). Browser mungkin crash saat menyimpan ke LocalStorage.');
-            }
-
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setFileUrl(reader.result as string);
-                setFileName(file.name);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (!fileUrl) {
-            alert("Mohon upload file SOP.");
-            return;
+            </div>`;
         }
 
-        const now = new Date().toISOString().split('T')[0];
-        const newVersion = initialData ? initialData.version + 1 : 1;
-        
-        const newRevision: Revision = {
-            version: newVersion,
-            date: now,
-            changedBy: currentUser,
-            note: initialData ? (note || "Update File SOP") : "Upload Dokumen Awal"
-        };
-
-        const newSOP: SOP = {
-            id: initialData?.id || 0, 
-            title,
-            category,
-            fileUrl,
-            fileName,
-            lastUpdated: now,
-            version: newVersion,
-            revisions: initialData ? [...initialData.revisions, newRevision] : [newRevision]
-        };
-
-        onSave(newSOP);
-    };
-
-    return (
-        <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden animate-fadeIn">
-            <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-800">{initialData ? 'Edit & Upload Revisi SOP' : 'Upload SOP Baru'}</h2>
-                <button onClick={onCancel} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
-            </div>
+        function renderSidebar() {
+            const activeClass = "bg-teal-700 text-white shadow-md";
+            const inactiveClass = "text-teal-100 hover:bg-teal-700/50";
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Judul SOP</label>
-                        <input 
-                            required
-                            type="text" 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
-                            value={title}
-                            onChange={e => setTitle(e.target.value)}
-                        />
+            const navItem = (viewName, icon, label) => {
+                const isActive = state.view === viewName || (viewName === 'list' && state.view === 'detail') || (viewName === 'manage' && state.view === 'manage');
+                return `
+                <button onclick="appActions.nav('${viewName}')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${isActive ? activeClass : inactiveClass}">
+                    <i data-lucide="${icon}" class="w-5 h-5"></i>
+                    <span class="font-medium">${label}</span>
+                    ${isActive ? '<i data-lucide="chevron-right" class="w-4 h-4 ml-auto"></i>' : ''}
+                </button>`;
+            };
+
+            return `
+            <aside class="fixed inset-y-0 left-0 z-50 w-64 bg-teal-800 text-white transform transition-transform duration-300 ease-in-out ${state.isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 shadow-xl flex flex-col justify-between">
+                <div>
+                    <div class="p-6 border-b border-teal-700 flex items-center justify-between">
+                        <div>
+                            <h1 class="text-xl font-bold">E-SOP</h1>
+                            <p class="text-xs text-teal-300">Klinik Asy Syifa Husada</p>
+                        </div>
+                        <button onclick="appActions.toggleSidebar()" class="lg:hidden text-teal-200"><i data-lucide="x"></i></button>
                     </div>
+                    <nav class="p-4 space-y-2">
+                        ${navItem('dashboard', 'layout-dashboard', 'Dashboard')}
+                        ${navItem('list', 'book-open', 'Daftar SOP')}
+                        ${state.user.role === 'admin' ? navItem('manage', 'shield-check', 'Upload SOP') : ''}
+                    </nav>
+                </div>
+                <div class="p-4 border-t border-teal-700 bg-teal-900">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center"><i data-lucide="user" class="w-4 h-4"></i></div>
+                        <div>
+                            <p class="text-sm font-medium">${state.user.name}</p>
+                            <p class="text-xs text-teal-400 capitalize">${state.user.role}</p>
+                        </div>
+                    </div>
+                    <button onclick="appActions.logout()" class="w-full flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 text-white py-2 rounded-md text-sm transition">
+                        <i data-lucide="log-out" class="w-4 h-4"></i><span>Keluar</span>
+                    </button>
+                </div>
+            </aside>`;
+        }
+
+        function renderMobileHeader() {
+            return `
+            <header class="bg-white shadow-sm lg:hidden p-4 flex items-center justify-between">
+                <button onclick="appActions.toggleSidebar()" class="text-gray-600"><i data-lucide="menu"></i></button>
+                <span class="font-bold text-teal-800">Klinik Asy Syifa Husada</span>
+                <div class="w-6"></div>
+            </header>`;
+        }
+
+        function renderMainContent() {
+            switch(state.view) {
+                case 'dashboard': return renderDashboardContent();
+                case 'list': return renderListContent();
+                case 'detail': return renderDetailContent();
+                case 'manage': return renderFormContent();
+                default: return renderDashboardContent();
+            }
+        }
+
+        function renderDashboardContent() {
+            const total = state.sops.length;
+            const cats = new Set(state.sops.map(s => s.category)).size;
+            const recent = [...state.sops].sort((a,b) => new Date(b.lastUpdated) - new Date(a.lastUpdated))[0];
+            const recentRows = state.sops.slice(0, 5).map(s => `
+                <tr class="hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                    <td class="p-4 font-medium text-gray-800">${s.title}</td>
+                    <td class="p-4"><span class="bg-teal-100 text-teal-800 px-2 py-1 rounded text-xs font-bold">v${s.version}.0</span></td>
+                    <td class="p-4 text-gray-500 text-sm">${s.lastUpdated}</td>
+                    <td class="p-4 text-gray-500 text-sm">${s.category}</td>
+                </tr>
+            `).join('');
+
+            return `
+            <div class="space-y-6 fade-in">
+                <div class="flex justify-between items-center">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
-                        <select 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white"
-                            value={category}
-                            onChange={e => setCategory(e.target.value)}
-                        >
-                            <option value="Administrasi">Administrasi</option>
-                            <option value="Pelayanan Medis">Pelayanan Medis</option>
-                            <option value="K3 & Sanitasi">K3 & Sanitasi</option>
-                            <option value="Farmasi">Farmasi</option>
-                            <option value="Umum">Umum</option>
+                        <h2 class="text-2xl font-bold text-gray-800">Dashboard</h2>
+                        <p class="text-gray-500">Selamat datang, ${state.user.name}</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
+                        <div class="p-3 bg-blue-50 text-blue-600 rounded-lg"><i data-lucide="book-open"></i></div>
+                        <div><p class="text-sm text-gray-500">Total SOP</p><p class="text-2xl font-bold text-gray-800">${total} Dokumen</p></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
+                        <div class="p-3 bg-purple-50 text-purple-600 rounded-lg"><i data-lucide="layout-dashboard"></i></div>
+                        <div><p class="text-sm text-gray-500">Kategori</p><p class="text-2xl font-bold text-gray-800">${cats} Bidang</p></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
+                        <div class="p-3 bg-green-50 text-green-600 rounded-lg"><i data-lucide="history"></i></div>
+                        <div><p class="text-sm text-gray-500">Update Terakhir</p><p class="text-lg font-bold text-gray-800 truncate w-32">${recent ? recent.lastUpdated : '-'}</p></div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-6 border-b border-gray-100"><h3 class="font-bold text-gray-800">Perubahan Terkini</h3></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 text-gray-500 text-sm"><tr><th class="p-4">Judul</th><th class="p-4">Versi</th><th class="p-4">Tanggal</th><th class="p-4">Kategori</th></tr></thead>
+                            <tbody>${recentRows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderListContent() {
+            const categories = ['All', ...new Set(state.sops.map(s => s.category))];
+            
+            const filtered = state.sops.filter(s => {
+                const matchSearch = s.title.toLowerCase().includes(state.searchTerm.toLowerCase()) || s.fileName.toLowerCase().includes(state.searchTerm.toLowerCase());
+                const matchCat = state.catFilter === 'All' || s.category === state.catFilter;
+                return matchSearch && matchCat;
+            });
+
+            const cards = filtered.map(s => `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-5 flex flex-col h-full group">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="bg-teal-50 text-teal-700 px-2 py-1 rounded text-xs font-semibold">${s.category}</span>
+                        <span class="text-gray-400 text-xs">${s.lastUpdated}</span>
+                    </div>
+                    <h3 class="font-bold text-lg text-gray-800 mb-2 group-hover:text-teal-600 transition-colors">${s.title}</h3>
+                    <div class="flex items-center space-x-2 text-gray-500 text-sm mb-4 bg-gray-50 p-2 rounded">
+                        <i data-lucide="file-text" class="w-4 h-4"></i><span class="truncate">${s.fileName}</span>
+                    </div>
+                    <div class="pt-4 border-t border-gray-50 flex justify-between items-center mt-auto">
+                        <span class="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">Ver ${s.version}.0</span>
+                        <button onclick="appActions.viewDetail(${s.id})" class="flex items-center space-x-1 text-teal-600 hover:text-teal-800 font-medium text-sm">
+                            <i data-lucide="eye" class="w-4 h-4"></i><span>Preview</span>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            return `
+            <div class="space-y-6 fade-in">
+                <div class="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Daftar SOP</h2>
+                    <div class="flex gap-2">
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+                            <input type="text" id="searchInput" oninput="appActions.setFilter('search', this.value)" placeholder="Cari SOP..." class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none w-full md:w-64">
+                        </div>
+                        <select id="catSelect" onchange="appActions.setFilter('cat', this.value)" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white">
+                            ${categories.map(c => `<option value="${c}">${c}</option>`).join('')}
                         </select>
                     </div>
                 </div>
-
-                {/* FILE UPLOAD AREA */}
-                <div className="bg-blue-50 border border-dashed border-blue-300 rounded-lg p-6 text-center">
-                    <div className="mb-4">
-                        <UploadCloud className="mx-auto h-12 w-12 text-blue-400" />
-                        <div className="mt-2 text-sm text-gray-600">
-                            <label className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500 px-2 py-1">
-                                <span>Upload file PDF</span>
-                                <input 
-                                    ref={fileInputRef}
-                                    type="file" 
-                                    accept="application/pdf"
-                                    className="sr-only" 
-                                    onChange={handleFileChange}
-                                />
-                            </label>
-                            <p className="pl-1 inline">atau drag and drop</p>
-                        </div>
-                        <p className="text-xs text-gray-500">PDF up to 3MB (Demo Mode)</p>
-                    </div>
-                    
-                    {fileName && (
-                        <div className="flex items-center justify-center space-x-2 text-sm text-green-700 bg-green-50 p-2 rounded">
-                            <File size={16} />
-                            <span className="font-semibold">File terpilih: {fileName}</span>
-                        </div>
-                    )}
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    ${filtered.length ? cards : '<div class="col-span-3 text-center py-12 text-gray-500">Tidak ada SOP ditemukan.</div>'}
                 </div>
+            </div>`;
+        }
 
-                {initialData && (
-                    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                        <label className="block text-sm font-bold text-yellow-800 mb-1">Catatan Revisi (Wajib)</label>
-                        <input 
-                            required
-                            type="text"
-                            placeholder="Contoh: Memperbarui lampiran B pada file PDF..." 
-                            className="w-full px-4 py-2 border border-yellow-300 rounded bg-white focus:ring-2 focus:ring-yellow-500 outline-none text-sm"
-                            value={note}
-                            onChange={e => setNote(e.target.value)}
-                        />
+        function renderDetailContent() {
+            const sop = state.sops.find(s => s.id === state.selectedSopId);
+            if (!sop) return `<div>Error: SOP Not found</div>`;
+
+            // Prepare Blob URL for preview
+            let previewUrl = sop.fileUrl;
+            let isBlob = false;
+            if (sop.fileUrl.startsWith('data:')) {
+                const blob = dataURItoBlob(sop.fileUrl);
+                if (blob) {
+                    previewUrl = URL.createObjectURL(blob);
+                    isBlob = true;
+                }
+            }
+
+            const revisions = [...sop.revisions].sort((a,b) => b.version - a.version).map(rev => `
+                <div class="flex gap-4 items-start">
+                    <div class="mt-1 flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-xs">v${rev.version}</div>
+                    <div class="flex-1 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                        <div class="flex justify-between mb-1">
+                            <span class="font-semibold text-gray-800">Oleh: ${rev.changedBy}</span>
+                            <span class="text-xs text-gray-500">${rev.date}</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Catatan: ${rev.note}</p>
                     </div>
-                )}
-
-                <div className="flex justify-end space-x-3 pt-4 border-t">
-                    <button 
-                        type="button"
-                        onClick={onCancel}
-                        className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition"
-                    >
-                        Batal
-                    </button>
-                    <button 
-                        type="submit"
-                        className="flex items-center space-x-2 px-6 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                    >
-                        <Save size={18} />
-                        <span>{initialData ? 'Simpan Revisi' : 'Upload SOP'}</span>
-                    </button>
                 </div>
-            </form>
-        </div>
-    );
-};
+            `).join('');
+
+            return `
+            <div class="max-w-5xl mx-auto space-y-6 fade-in">
+                <button onclick="appActions.nav('list')" class="flex items-center text-gray-500 hover:text-teal-600 mb-4 transition">
+                    <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> Kembali ke Daftar
+                </button>
+
+                <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+                    <div class="bg-teal-600 p-6 text-white">
+                        <div class="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                            <div>
+                                <span class="bg-teal-500 text-white border border-teal-400 px-3 py-1 rounded-full text-xs font-semibold mb-2 inline-block">${sop.category}</span>
+                                <h1 class="text-2xl md:text-3xl font-bold mb-2">${sop.title}</h1>
+                                <p class="text-teal-100 text-sm flex items-center gap-2"><i data-lucide="file" class="w-4 h-4"></i> ${sop.fileName}</p>
+                            </div>
+                            <div class="bg-white/10 backdrop-blur-sm p-3 rounded-lg text-center min-w-[100px]">
+                                <p class="text-xs uppercase tracking-wider text-teal-200">Versi</p>
+                                <p class="text-3xl font-bold">${sop.version}.0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 md:p-8">
+                        <div class="flex flex-wrap gap-2 justify-between items-center mb-6 border-b pb-4">
+                            <h2 class="text-lg font-bold text-gray-800 flex items-center"><i data-lucide="eye" class="w-5 h-5 mr-2 text-teal-600"></i> Preview Dokumen</h2>
+                            <div class="flex space-x-2">
+                                <button onclick="appActions.download(${sop.id})" class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium transition">
+                                    <i data-lucide="download" class="w-4 h-4"></i><span>Unduh PDF</span>
+                                </button>
+                                ${state.user.role === 'admin' ? `
+                                <button onclick="appActions.editSop(${sop.id})" class="flex items-center space-x-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium transition">
+                                    <i data-lucide="edit" class="w-4 h-4"></i><span>Revisi File</span>
+                                </button>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-100 rounded-lg border border-gray-300 overflow-hidden shadow-inner min-h-[500px] md:min-h-[700px] relative">
+                            <embed src="${previewUrl}" type="application/pdf" class="w-full h-[500px] md:h-[700px]" />
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 p-6 md:p-8 border-t border-gray-200">
+                        <h3 class="font-bold text-gray-800 mb-4 flex items-center"><i data-lucide="history" class="w-5 h-5 mr-2 text-gray-500"></i> Riwayat Perubahan</h3>
+                        <div class="space-y-4">${revisions}</div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderFormContent() {
+            const isEdit = !!state.selectedSopId;
+            const data = state.formData;
+
+            return `
+            <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden fade-in">
+                <div class="p-6 border-b bg-gray-50 flex justify-between items-center">
+                    <h2 class="text-xl font-bold text-gray-800">${isEdit ? 'Edit & Revisi SOP' : 'Upload SOP Baru'}</h2>
+                    <button onclick="appActions.nav('list')" class="text-gray-400 hover:text-gray-600"><i data-lucide="x"></i></button>
+                </div>
+                
+                <form onsubmit="appActions.submitForm(event)" class="p-6 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Judul SOP</label>
+                            <input type="text" id="inputTitle" value="${data.title}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+                            <select id="inputCategory" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white">
+                                ${['Umum', 'Administrasi', 'Pelayanan Medis', 'K3 & Sanitasi', 'Farmasi'].map(c => `<option value="${c}" ${data.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-50 border border-dashed border-blue-300 rounded-lg p-6 text-center">
+                        <div class="mb-4">
+                            <i data-lucide="upload-cloud" class="mx-auto h-12 w-12 text-blue-400"></i>
+                            <div class="mt-2 text-sm text-gray-600">
+                                <label class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 px-2 py-1">
+                                    <span>Upload file PDF</span>
+                                    <input type="file" accept="application/pdf" class="sr-only" onchange="appActions.handleFileSelect(this)">
+                                </label>
+                                <p class="pl-1 inline">atau drag and drop</p>
+                            </div>
+                            <p class="text-xs text-gray-500">PDF up to 3MB (Demo Mode)</p>
+                        </div>
+                        <div id="fileNameContainer" class="${data.fileName ? '' : 'hidden'} flex items-center justify-center space-x-2 text-sm text-green-700 bg-green-50 p-2 rounded">
+                            <i data-lucide="file" class="w-4 h-4"></i>
+                            <span id="fileNameDisplay" class="font-semibold">${data.fileName}</span>
+                        </div>
+                    </div>
+
+                    ${isEdit ? `
+                    <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                        <label class="block text-sm font-bold text-yellow-800 mb-1">Catatan Revisi (Wajib)</label>
+                        <input type="text" id="inputNote" required placeholder="Contoh: Update lampiran..." class="w-full px-4 py-2 border border-yellow-300 rounded bg-white focus:ring-2 focus:ring-yellow-500 outline-none text-sm">
+                    </div>` : ''}
+
+                    <div class="flex justify-end space-x-3 pt-4 border-t">
+                        <button type="button" onclick="appActions.nav('list')" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition">Batal</button>
+                        <button type="submit" class="flex items-center space-x-2 px-6 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition shadow-lg">
+                            <i data-lucide="save" class="w-4 h-4"></i><span>${isEdit ? 'Simpan Revisi' : 'Upload SOP'}</span>
+                        </button>
+                    </div>
+                </form>
+            </div>`;
+        }
+
+        // Initialize App
+        init();
+
+    </script>
+</body>
+</html>
